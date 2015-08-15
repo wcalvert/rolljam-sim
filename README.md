@@ -7,3 +7,12 @@ To prevent the Rolljam attack, I store a list of codes which have been "rolled" 
 # Info
 
 Here is a Wired article about the Rolljam attack: http://www.wired.com/2015/08/hackers-tiny-device-unlocks-cars-opens-garages/
+
+# How-To
+
+To run the code:
+
+	```
+	python rolljam.py
+	```
+And observe the output.
