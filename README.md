@@ -12,7 +12,6 @@ Here is a Wired article about the Rolljam attack: http://www.wired.com/2015/08/h
 
 To run the code:
 
-	```
 	python rolljam.py
-	```
+
 And observe the output.
