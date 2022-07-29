@@ -30,14 +30,14 @@
 import socket
 from Crypto.Cipher import AES
 from Crypto import Random
-import thread
+import _thread
 import time
 from multiprocessing import Process
 from hashlib import sha1
 
 def OTP(salt, n=0, digits=8):
     while True:
-        hash = sha1(str(salt) + repr(n)).hexdigest()
+        hash = sha1((str(salt) + repr(n)).encode("utf-8")).hexdigest()
         yield hash[-digits:]
         n += 1
 
@@ -58,7 +58,7 @@ class Server(object):
 	def serve(self):
 		while True:
 			clientsock, address = self.socket.accept()
-			thread.start_new_thread(self.handler, (clientsock, address))
+			_thread.start_new_thread(self.handler, (clientsock, address))
 
 	def handler(self, clientsock, address):
 		while True:
@@ -67,7 +67,7 @@ class Server(object):
 				iv = temp[:16]
 				data = temp[16:]
 				try:
-					decryptor = AES.new(self.key, self.mode, IV=iv)
+					decryptor = AES.new(self.key.encode("utf-8"), self.mode, IV=iv)
 				except ValueError:
 					# After the tests are finished running, I'm getting "IV must be 16 bytes".
 					# There should not be any more data received though, so I don't know what is going on.
@@ -78,7 +78,7 @@ class Server(object):
 
 			# Remove extra spaces and break message into chunks.
 			self.data = self.data.strip()
-			received_uid = self.data[:7]
+			received_uid = self.data[:7].decode()
 			received_code = self.data[7:-4]
 			message = self.data[-4:]
 			known_client = False
@@ -86,22 +86,22 @@ class Server(object):
 				if client.uid == received_uid:
 					known_client = True
 					if received_code == client.last_code:
-						print "Code Replayed! Client: {0} with received code: {1}".format(client.uid, client.last_code)
+						print("Code Replayed! Client: {0} with received code: {1}".format(client.uid, client.last_code))
 						break
 					if received_code in client.invalid_codes:
-						print "Possible Rolljam! Rejecting message from client {0} with code {1}".format(client.uid, client.last_code)
+						print("Possible Rolljam! Rejecting message from client {0} with code {1}".format(client.uid, client.last_code))
 						break
 					loops = 0
-					client.next_code = client.generator.next()
+					client.next_code = client.generator.__next__()
 					while received_code != client.next_code:
 						loops += 1
 						client.invalid_codes.append(client.next_code)
-						client.next_code = client.generator.next()
+						client.next_code = client.generator.__next__()
 					client.last_code = client.next_code
-					print "Code accepted after {0} retries. Messsage: '{1}' from client '{2}' with received code: {3}, generated code: {4}".format(
-							loops, message, received_uid, received_code, client.last_code)
+					print("Code accepted after {0} retries. Messsage: '{1}' from client '{2}' with received code: {3}, generated code: {4}".format(
+						loops, message, received_uid, received_code, client.last_code))
 			if not known_client:
-				print "Unknown UID detected: {0}".format(received_uid)
+				print("Unknown UID detected: {0}".format(received_uid))
 
 	def SetEncryptionKey(self, key):
 		if len(key) != 16:
@@ -123,20 +123,20 @@ class Client(object):
 		self.seed = seed
 		self.generator = OTP(salt=seed)
 		self.last_code = None
-		self.next_code = self.generator.next()
+		self.next_code = self.generator.__next__()
 		# List of invalid codes is located in the client object for simulation purposes only.
 		# In the real world, the server device would maintain this list for each client.
 		self.invalid_codes = []
 
 	def send(self, buffer_in, transmit=True):	
-		buffer = "{}{}{}".format(self.uid, self.generator.next(), buffer_in)
+		buffer = "{}{}{}".format(self.uid, self.generator.__next__(), buffer_in)
 		clear_text = buffer
 		if self.key is not None:
 			while (len(buffer)+16) % 16 != 0:
 				buffer += " "
 			iv = Random.new().read(16)
-			encryptor = AES.new(self.key, self.mode, IV=iv)
-			buffer = iv + encryptor.encrypt(buffer)
+			encryptor = AES.new(self.key.encode("utf-8"), self.mode, IV=iv)
+			buffer = iv + encryptor.encrypt(buffer.encode("utf-8"))
 		if transmit:
 			self.socket.sendall(buffer)
 		return buffer, clear_text # return the encrypted and clear text data for use in tests
@@ -150,33 +150,33 @@ def run_server(server):
 	try:
 		server.serve()
 	except KeyboardInterrupt:
-		print "Shutting down..."
+		print("Shutting down...")
 
 # Simulate a few messages which were not received by the server.
 # The server should increment the rolling code twice when it receives the last message.
 def basic_test():
-	print "Beginning basic test..."
+	print("Beginning basic test...")
 	c = Client("localhost",10000,"device0","1234")
 	c.send("LOCK")
 	c.send("UNLK", transmit=False)
 	c.send("UNLK", transmit=False)
 	c.send("UNLK")
 	time.sleep(1)
-	print "Basic test finished.\n"
+	print("Basic test finished.\n")
 
 # "Naive" replay attack - just send the same encrypted data again.
 def naive_replay():
-	print "Beginning naive replay..."
+	print("Beginning naive replay...")
 	victim = Client("localhost",10000,"device1","1234")
 	attacker = Client("localhost",10000,None,None)
 	encrypted, clear = victim.send("UNLK")
 	attacker.socket.sendall(encrypted)
 	time.sleep(1)
-	print "Naive replay finished.\n\n"
+	print("Naive replay finished.\n\n")
 
 # Rolljam attack - steal key and attempt to use it later.
 def rolljam():
-	print "Beginning rolljam..."
+	print("Beginning rolljam...")
 	victim = Client("localhost",10000,"device2","1234")
 	attacker = Client("localhost",10000,None,None)
 	victim.send("LOCK")
@@ -184,13 +184,13 @@ def rolljam():
 	victim.send("UNLK")
 	attacker.socket.sendall(encrypted)
 	time.sleep(1)
-	print "Rolljam finished.\n\n"
+	print("Rolljam finished.\n\n")
 
 def main():
 	s = Server("localhost",10000)
 	p = Process(target=run_server, args=(s,))
 	p.start()
-	print "Server started, waiting a bit..."
+	print("Server started, waiting a bit...")
 	time.sleep(1)
 	basic_test()
 	naive_replay()
